@@ -1,0 +1,223 @@
+<meta charset="utf-8">
+<title>Furuhonya Kani Player</title>
+<meta name="robots" content="noindex,nofollow">
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Figtree:wght@400;500;600&family=Zen+Maru+Gothic:wght@500;700&display=swap">
+<style>
+/* Layout: wide player on the left, scrolling episode list on the right; list drops under the player on narrow screens. */
+:root{
+  --bg:#eef3f8; --panel:#ffffff; --line:#d6e0ea; --fg:#1d2a38; --muted:#5d6f82;
+  --accent:#d9527a; --accent-ink:#ffffff; --watched:#2f9e77; --active:#fde6ed;
+  --font-display:"Zen Maru Gothic","Hiragino Maru Gothic ProN",system-ui,sans-serif;
+  --font-body:"Figtree",system-ui,-apple-system,"Segoe UI",sans-serif;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --bg:#12171e; --panel:#1b232d; --line:#2c3846; --fg:#e6edf5; --muted:#93a4b7;
+  --accent:#ee7a9c; --accent-ink:#2a0f19; --watched:#5ccaa0; --active:#3a2230; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#12171e; --panel:#1b232d; --line:#2c3846; --fg:#e6edf5; --muted:#93a4b7;
+  --accent:#ee7a9c; --accent-ink:#2a0f19; --watched:#5ccaa0; --active:#3a2230; color-scheme:dark}
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--fg);font:15px/1.5 var(--font-body);
+  padding-block:20px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
+.wrap{max-width:1240px;margin:0 auto;display:grid;gap:16px 24px;grid-template-columns:minmax(0,1fr) 340px;align-items:start}
+header{grid-column:1/-1;display:flex;flex-wrap:wrap;align-items:baseline;gap:4px 16px;justify-content:space-between}
+h1{margin:0;font:700 26px/1.2 var(--font-display);text-wrap:balance}
+.sub{color:var(--muted);font-size:13px}
+.stage{min-width:0;display:grid;gap:12px}
+.frame{position:relative;width:100%;aspect-ratio:16/9;background:#000;border-radius:10px;overflow:hidden}
+.frame video{position:absolute;inset:0;width:100%;height:100%;background:#000}
+.now{display:flex;flex-wrap:wrap;gap:8px 16px;align-items:center;justify-content:space-between}
+.now h2{margin:0;font:700 20px/1.2 var(--font-display)}
+.now small{color:var(--muted);font-size:13px;display:block}
+.ctrl{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+button,.tog{font:600 14px var(--font-body);color:var(--fg);background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:8px 14px;cursor:pointer}
+button:hover{border-color:var(--accent)}
+button.primary{background:var(--accent);color:var(--accent-ink);border-color:var(--accent)}
+button:focus-visible,.tog:focus-within,.item:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.tog{display:inline-flex;gap:8px;align-items:center}
+.tog select{font:inherit;color:var(--fg);background:var(--panel);border:1px solid var(--line);border-radius:6px;padding:2px 4px}
+.tog input{accent-color:var(--accent);width:16px;height:16px;margin:0}
+.status{min-height:20px;color:var(--muted);font-size:13px}
+aside{background:var(--panel);border:1px solid var(--line);border-radius:10px;display:flex;flex-direction:column;max-height:calc(100vh - 110px);min-height:320px}
+.ahead{padding:12px 14px;border-bottom:1px solid var(--line);display:flex;justify-content:space-between;gap:8px;align-items:center}
+.ahead strong{font:700 15px var(--font-display)}
+.ahead span{color:var(--muted);font-size:13px;font-variant-numeric:tabular-nums}
+.bar{height:4px;background:var(--line)}
+.bar i{display:block;height:100%;width:0;background:var(--watched);transition:width .3s}
+ol{list-style:none;margin:0;padding:6px;overflow:auto}
+.item{display:flex;gap:10px;align-items:center;padding:9px 10px;border-radius:8px;cursor:pointer}
+.item:hover{background:color-mix(in srgb,var(--line) 45%,transparent)}
+.item.on{background:var(--active)}
+.item input{accent-color:var(--watched);width:18px;height:18px;margin:0;flex:none;cursor:pointer}
+.item .t{flex:1;min-width:0;font-variant-numeric:tabular-nums;font-weight:500}
+.item.done .t{color:var(--muted);text-decoration:line-through;text-decoration-color:color-mix(in srgb,var(--muted) 50%,transparent)}
+.item .pl{font-size:11px;color:var(--accent);font-weight:600;letter-spacing:.06em;text-transform:uppercase}
+@media (max-width:860px){.wrap{grid-template-columns:minmax(0,1fr)}aside{max-height:none}ol{max-height:60vh}}
+@media (prefers-reduced-motion:reduce){.bar i{transition:none}}
+.gate{min-height:70vh;display:grid;place-items:center}
+.gbox{width:min(360px,100%);display:grid;gap:12px;background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:24px}
+.gbox input[type=password]{font:inherit;color:var(--fg);background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:10px 12px}
+.gbox input[type=password]:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}
+</style>
+
+<section id="gate" class="gate">
+  <form id="gateform" class="gbox" autocomplete="off">
+    <h1>Furuhonya Kani</h1>
+    <p class="sub">Halaman ini dikunci. Masukkan key untuk membuka.</p>
+    <label for="key" class="sr">Key</label>
+    <input id="key" type="password" placeholder="Key" required autofocus>
+    <label class="tog" for="remember"><input id="remember" type="checkbox"> Ingat di perangkat ini</label>
+    <button id="go" type="submit" class="primary">Buka</button>
+    <div id="err" class="status" role="alert"></div>
+  </form>
+</section>
+<div id="app" hidden>
+<div class="wrap">
+  <header>
+    <h1>Furuhonya Kani</h1>
+    <div class="sub">33 bagian · putar otomatis · hemat data</div>
+  </header>
+
+  <main class="stage">
+    <div class="frame"><video id="player" controls playsinline preload="metadata"></video></div>
+    <div class="now">
+      <div><h2 id="title">Episode</h2><small id="pos"></small></div>
+      <div class="ctrl">
+        <button id="prev" type="button">Sebelumnya</button>
+        <button id="next" type="button" class="primary">Berikutnya</button>
+        <label class="tog" for="q">Kualitas <select id="q"><option value="mp4-mobile">360p (hemat, ±100 MB)</option><option value="mp4">720p (±1 GB)</option></select></label>
+        <label class="tog" for="auto"><input id="auto" type="checkbox" checked> Putar otomatis</label>
+      </div>
+    </div>
+    <div class="status" id="status" role="status"></div>
+  </main>
+
+  <aside aria-label="Daftar episode">
+    <div class="ahead"><strong>Daftar episode</strong><span id="count"></span></div>
+    <div class="bar"><i id="fill"></i></div>
+    <ol id="list"></ol>
+  </aside>
+</div>
+</div>
+
+<script>
+
+function start(EP){
+const KEY='furuhonya-kani-v2';
+let st={watched:[],cur:0,auto:true,q:'mp4-mobile',pos:{}};
+try{const s=JSON.parse(localStorage.getItem(KEY)||'null'); if(s&&Array.isArray(s.watched))st=Object.assign(st,s);}catch(e){}
+const save=()=>{try{localStorage.setItem(KEY,JSON.stringify(st))}catch(e){}};
+const $=id=>document.getElementById(id);
+const vid=$('player'), list=$('list');
+let cur=Math.min(Math.max(0,st.cur|0),EP.length-1), seq=0, lastSave=0;
+
+function renderList(){
+  list.innerHTML='';
+  EP.forEach(([label],i)=>{
+    const li=document.createElement('li');
+    const done=st.watched.includes(i);
+    li.className='item'+(i===cur?' on':'')+(done?' done':'');
+    li.tabIndex=0; li.dataset.i=i;
+    li.innerHTML='<input type="checkbox" aria-label="Sudah ditonton"'+(done?' checked':'')+'><span class="t"></span>'+(i===cur?'<span class="pl">Diputar</span>':'');
+    li.querySelector('.t').textContent=label;
+    list.appendChild(li);
+  });
+  const n=st.watched.length;
+  $('count').textContent=n+' / '+EP.length+' ditonton';
+  $('fill').style.width=(n/EP.length*100)+'%';
+}
+function release(){ vid.pause(); vid.removeAttribute('src'); vid.load(); }  // lepas buffer video sebelumnya
+async function fileUrl(id){
+  const r=await fetch('https://api.streamable.com/videos/'+id);
+  if(!r.ok) throw new Error('api '+r.status);
+  const f=(await r.json()).files||{};
+  const pick=f[st.q]||f['mp4-mobile']||f.mp4||f['mp4-high']||f.original;
+  if(!pick||!pick.url) throw new Error('no file');
+  return pick.url.startsWith('//')?'https:'+pick.url:pick.url;
+}
+async function load(i,play){
+  cur=Math.min(Math.max(0,i),EP.length-1); st.cur=cur; save();
+  const my=++seq;
+  $('title').textContent='Bagian '+EP[cur][0];
+  $('pos').textContent=(cur+1)+' dari '+EP.length;
+  $('prev').disabled=cur===0; $('next').disabled=cur===EP.length-1;
+  $('status').textContent='Memuat video…';
+  renderList();
+  const on=list.querySelector('.item.on'); if(on) on.scrollIntoView({block:'nearest'});
+  release();
+  try{
+    const url=await fileUrl(EP[cur][1]);
+    if(my!==seq) return;
+    vid.src=url;
+    const t=st.pos[cur]||0;
+    if(t>5) vid.addEventListener('loadedmetadata',()=>{ if(my===seq && t<vid.duration-10) vid.currentTime=t; },{once:true});
+    $('status').textContent=st.auto?'Akan lanjut otomatis setelah video selesai.':'';
+    if(play) vid.play().catch(()=>{ $('status').textContent='Tekan tombol putar untuk mulai.'; });
+  }catch(e){
+    if(my===seq) $('status').textContent='Video gagal dimuat. Coba pilih bagian lain atau muat ulang halaman.';
+  }
+}
+function markWatched(i,v){
+  const has=st.watched.includes(i);
+  if(v&&!has)st.watched.push(i); if(!v&&has)st.watched=st.watched.filter(x=>x!==i);
+  save(); renderList();
+}
+vid.addEventListener('ended',()=>{
+  markWatched(cur,true); delete st.pos[cur]; save();
+  if(st.auto&&cur<EP.length-1){ $('status').textContent='Lanjut ke bagian '+EP[cur+1][0]+'…'; load(cur+1,true); }
+  else if(cur===EP.length-1){ $('status').textContent='Semua bagian sudah selesai.'; }
+});
+vid.addEventListener('timeupdate',()=>{
+  const n=Date.now(); if(n-lastSave<5000||!vid.currentTime) return; lastSave=n;
+  st.pos[cur]=Math.floor(vid.currentTime); save();
+});
+vid.addEventListener('error',()=>{ if(vid.getAttribute('src')) $('status').textContent='Video gagal diputar. Coba muat ulang bagian ini.'; });
+list.addEventListener('click',e=>{
+  const li=e.target.closest('.item'); if(!li) return;
+  const i=+li.dataset.i;
+  if(e.target.matches('input')){ markWatched(i,e.target.checked); return; }
+  load(i,true);
+});
+list.addEventListener('keydown',e=>{
+  const li=e.target.closest('.item'); if(!li||e.target.matches('input')) return;
+  if(e.key==='Enter'||e.key===' '){e.preventDefault();load(+li.dataset.i,true)}
+});
+$('prev').onclick=()=>load(cur-1,true);
+$('next').onclick=()=>{markWatched(cur,true);load(cur+1,true)};
+$('auto').checked=!!st.auto;
+$('auto').onchange=e=>{st.auto=e.target.checked;save()};
+$('q').value=st.q;
+$('q').onchange=e=>{st.q=e.target.value;save(); const t=vid.currentTime; st.pos[cur]=Math.floor(t); save(); load(cur,!vid.paused)};
+load(cur,false);
+}
+
+/* --- Gerbang key: daftar video terenkripsi (AES-GCM, kunci dari PBKDF2) --- */
+const PAYLOAD={"salt":"C4tIK/f8NFXpfP/nojnJVA==","iv":"S/bwZDc2OdUP3l9p","iter":600000,"data":"CWI1dc0CJHo81iQ3yW9Qc0JN3GheqX5UFIHtHmGw+1QCm5H7pOx3w/C4+GOr0NpJFVDE5IP/DynxsKvWgl/Qvq6L+JkCcEh4NffEqRzx4yk8/EMx+te5TTAPFBAs6P+Qa+gB1zLiTUMUVfto87tlilyvqyIIoT6xFcWmQIHKry3TJg7gdKEC2BGDIs6JVpze/QykToO8knNJUTXDpKpWKoplhQWav5dE/97kpsmPXP9J+AYTMelZ2YxueoTyhyhlsLjEYQ01aoHFSF7IrZKCiSVGbiSVsPch1p6P/LHxe/8hd1cULNTyE5+VGbFbPka+5r+4jOxfkb8WNQzTJxuecSK1WEca7CGnmXQF1GbMH1euFD8r/tZQqVGzqzLOuYv8gi6pTx+OpwaopvT/h3CD/Mdo7J3fioTUo/N9Z2ifjbh0KAGmu3S23buwnghVXj21l8Zfd+0K/OvK6ayDyFfVvBXMslQ+aFk3vbIM0Rwx3Y7sWOilZT9+d9ez3hiLtoyqQXD4Bg+k96Fu/zYivIrPA8U2tU+W789j0U1iXo58fEx04aQQpnyixqNt8kXtXWoeTQpFgHqxZJbO8B5nvxjbK4UE9hqT3tBtPQq2EnDAk3wlrU5BSQV86IVcy4nECeBaAdoQFuyRkbsAVyYh2Y5hnBS60G2e+8j0VjOHlrR2StC25DwXnpRB/TgIPWJkTzLAeB15Lb2tjbRX8DBUWT0e6rUiVHTNcbAqUQMUCLMofwZyUf7SAGQpcV/H/H0NcvWStfOE2LLcskCADalOmqaYG6Ctmbu8dsq/jBJuu6uKRqUYF9Ijqv8snCDEmJJfsRVFuD+YmzbPYe3/7OvjjfIgZrgWmmlTdsv4zFRwpgU1NDk8+SpfkaGUPwYpieFUJzYUrkX0j2+BWmTtKxedwZwo2gRI4euX0kCz2+a93aOncrCqFPoctuNk1F60weNkUJb7Sl0GPueRUSS3IHTj9KdJ/xeEEd5c2U0xHJw4wubWlClHzCY3G/1bHovghGrG3P7aLlY2QaAYeDeyPJA58Of62ZCHkCu/paYIyau4hAhyKrblfS5z1+oT8F3ZiSj/9sYKC8n88uR013oQNffQaWZOMKmAfaUlzjclQlS6brQ3Dnw0HC1qhJ0Sg/HuAMunJu3XzBzl7EiY0KoiqV5HniGjsyIbZ+c0rIshNSObECSkhyPf6FFdmvV4zr3vJfgHnAYO0YoeCrjX3lI1t5OhvN+rrkE8tewyQn56CY8snGCeaqcPj/SOAV5ld3E9323o+K2Y4hF5PCpYv3plNzaXubbkHlh/dQUVXu3SNupIRKzkh9yQiWy97SkJwPN53cTfa0u17k8//AYyk4VZ9/UigXVjM9Rje5Ms1zy5OOIt3f2OfUeWYUElVw5lbmYDXVTJ"};
+const b64=s=>Uint8Array.from(atob(s),c=>c.charCodeAt(0));
+async function decrypt(pass){
+  const enc=new TextEncoder();
+  const base=await crypto.subtle.importKey('raw',enc.encode(pass),'PBKDF2',false,['deriveKey']);
+  const key=await crypto.subtle.deriveKey({name:'PBKDF2',salt:b64(PAYLOAD.salt),iterations:PAYLOAD.iter,hash:'SHA-256'},base,{name:'AES-GCM',length:256},false,['decrypt']);
+  const plain=await crypto.subtle.decrypt({name:'AES-GCM',iv:b64(PAYLOAD.iv)},key,b64(PAYLOAD.data));
+  return JSON.parse(new TextDecoder().decode(plain));
+}
+const gate=document.getElementById('gate'), app=document.getElementById('app');
+async function unlock(pass,remember){
+  const btn=document.getElementById('go'), err=document.getElementById('err');
+  btn.disabled=true; err.textContent='Memeriksa…';
+  try{
+    const eps=await decrypt(pass);
+    try{ if(remember) localStorage.setItem('furuhonya-key',pass); else localStorage.removeItem('furuhonya-key'); }catch(e){}
+    gate.hidden=true; app.hidden=false; start(eps);
+  }catch(e){
+    err.textContent='Key salah. Coba lagi.'; btn.disabled=false;
+    try{ localStorage.removeItem('furuhonya-key'); }catch(_){}
+  }
+}
+document.getElementById('gateform').addEventListener('submit',e=>{
+  e.preventDefault(); unlock(document.getElementById('key').value, document.getElementById('remember').checked);
+});
+try{ const k=localStorage.getItem('furuhonya-key'); if(k){ document.getElementById('remember').checked=true; unlock(k,true);} }catch(e){}
+</script>
